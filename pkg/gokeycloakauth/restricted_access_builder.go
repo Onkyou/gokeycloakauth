@@ -18,7 +18,7 @@ type RestrictedAccessBuilder interface {
 	RestrictButForRole(role string) RestrictedAccessBuilder
 	RestrictButForUid(uid string) RestrictedAccessBuilder
 	RestrictButForRealm(realmName string) RestrictedAccessBuilder
-	Build(next http.Handler) http.Handler
+	Build() func(http.Handler) http.Handler
 }
 
 type restrictedAccessBuilderImpl struct {
@@ -50,13 +50,13 @@ func (b *restrictedAccessBuilderImpl) RestrictButForRealm(realmName string) Rest
 	return b
 }
 
-func (b *restrictedAccessBuilderImpl) Build(next http.Handler) http.Handler {
+func (b *restrictedAccessBuilderImpl) Build() func(http.Handler) http.Handler {
+	accessFn := func(tc *TokenContainer, r *http.Request) bool { return true }
 	if b.config.DisableSecurityCheck {
 		slog.Warn("gokeycloakauth access check is disabled")
-		return next
+	} else {
+		accessFn = b.checkIfOneConditionMatches()
 	}
-
-	accessFn := b.checkIfOneConditionMatches()
 	config := KeycloakConfig{
 		Url:           b.config.Url,
 		Realm:         b.config.Realm,
@@ -64,7 +64,7 @@ func (b *restrictedAccessBuilderImpl) Build(next http.Handler) http.Handler {
 		HTTPClient:    b.config.HTTPClient,
 	}
 
-	return AuthMiddleware(config, accessFn, next)
+	return Auth(config, accessFn)
 }
 
 func (b *restrictedAccessBuilderImpl) checkIfOneConditionMatches() AccessCheckFunction {

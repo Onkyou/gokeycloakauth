@@ -2,7 +2,7 @@ package gokeycloakauth
 
 import "net/http"
 
-func AuthMiddleware(config KeycloakConfig, accessFn AccessCheckFunction, next http.Handler) http.Handler {
+func _AuthMiddleware(config KeycloakConfig, accessFn AccessCheckFunction, next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		tokenContainer, ok := getTokenContainer(r, config)
 		if !ok || !tokenContainer.Valid() {
