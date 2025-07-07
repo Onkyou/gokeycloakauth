@@ -238,55 +238,6 @@ type KeycloakConfig struct {
 	HTTPClient         *http.Client
 }
 
-func AuthFunc(fn func(http.ResponseWriter, *http.Request, string), config KeycloakConfig, accessCheckFunctions ...AccessCheckFunction) func(http.Handler) http.HandlerFunc {
-	return func(next http.Handler) http.HandlerFunc {
-		return func(w http.ResponseWriter, r *http.Request) {
-			start := time.Now()
-			done := make(chan bool, 1)
-
-			go func() {
-				tc, ok := getTokenContainer(r, config)
-				if !ok || !tc.Valid() {
-					http.Error(w, "unauthorized", http.StatusUnauthorized)
-					done <- false
-					return
-				}
-
-				// Run access check functions
-				for _, fnCheck := range accessCheckFunctions {
-					if fnCheck(tc, r) {
-						// Store token in context
-						ctx := context.WithValue(r.Context(), "keycloak_token", tc.KeyCloakToken)
-						r = r.WithContext(ctx)
-
-						// Call the provided callback with the access token string
-						fn(w, r, tc.Token.AccessToken)
-
-						done <- true
-						return
-					}
-				}
-
-				http.Error(w, "forbidden", http.StatusForbidden)
-				done <- false
-			}()
-
-			select {
-			case ok := <-done:
-				if !ok {
-					slog.Info("gokeycloakauth access denied", "duration", time.Since(start), "url", r.URL.Path)
-					return
-				}
-				slog.Info("gokeycloakauth access granted", "duration", time.Since(start), "url", r.URL.Path)
-				next.ServeHTTP(w, r) // call next handler after fn callback
-			case <-time.After(VarianceTimer):
-				http.Error(w, "authorization timeout", http.StatusGatewayTimeout)
-				slog.Info("gokeycloakauth timeout", "duration", time.Since(start), "url", r.URL.Path)
-			}
-		}
-	}
-}
-
 func Auth(config KeycloakConfig, accessCheckFunctions ...AccessCheckFunction) func(http.Handler) http.Handler {
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
